@@ -1,19 +1,9 @@
 /*
- * Basic program to test theintegrationof the 16 Ch pwm, 
- * MPU6050 and the use of PID librariy and its tunnings.
- * It waits stabilizationWaitMillis befor actuallyrunning the code
- * to wait the MPU6050 to stabilize.
+ * Starting with self balancing from front to back and then left to right.
  */
 
-// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
-// for both classes must be in the include path of your project
 #include "I2Cdev.h"
-
 #include "MPU6050_6Axis_MotionApps20.h"
-//#include "MPU6050.h" // not necessary if using MotionApps include file
-
-// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
-// is used in I2Cdev.h
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
@@ -22,16 +12,27 @@
 #include <Adafruit_PWMServoDriver.h>
 // called this way, it uses the default address 0x40
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
-#define SERVOMIN  150 //150 //368 // this is the 'minimum' pulse length count (out of 4096)
-#define SERVOMAX  500 //600 //467 //this is the 'maximum' pulse length count (out of 4096)
-uint8_t servonum = 15;
+#define SERVOMIN  150 // this is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  500 //this is the 'maximum' pulse length count (out of 4096)
+#define SERVOS_ARRAY_SIZE 16
+//Home positions                        |-Right(Black) leg| x  |-Left(White) leg|  x RA LA  x  x
+//Home positions                         0  1    2   3   4  5   6   7    8  9  10 11 12 13 14 15
+int homePositions[SERVOS_ARRAY_SIZE] = {-8, 0, -90, 15, 15, 0, -5, 15, 176, 0, 55, 0, 0, 0, 0, 0};
+int targetPositions[SERVOS_ARRAY_SIZE];
+long currentPosition[SERVOS_ARRAY_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ,0, 0};
+
+//Servo legs identifiers
+uint8_t hipFB_R = 3; //Hip front back
+uint8_t hipFB_L = 9;
+uint8_t hipLR_R = 4; //Hip left right
+uint8_t hipLR_L = 10;
+uint8_t ankleLR_R = 0;
+uint8_t ankleLR_L = 6;
+
 unsigned long previousMillis = 0;
 unsigned long stabilizationWaitMillis = 5000;
 boolean doneStabilizing = false;  
 
-/*float Kp = 0.8;
-float Ki = 0.07;
-float Kd = 0.12;*/
 float Kp = 0.5;
 float Ki = 30;
 float Kd = 0.05;
@@ -61,11 +62,7 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
-VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
 VectorFloat gravity;    // [x, y, z]            gravity vector
-float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 // ================================================================
@@ -88,17 +85,8 @@ void setup() {
         Fastwire::setup(400, true);
     #endif
 
-    // initialize serial communication
-    // (115200 chosen because it is required for Teapot Demo output, but it's
-    // really up to you depending on your project)
     Serial.begin(115200);
     while (!Serial); // wait for Leonardo enumeration, others continue immediately
-
-    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3v or Ardunio
-    // Pro Mini running at 3.3v, cannot handle this baud rate reliably due to
-    // the baud timing being too misaligned with processor ticks. You must use
-    // 38400 or slower in these cases, or use some kind of external separate
-    // crystal solution for the UART timer.
 
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
@@ -151,41 +139,14 @@ void setup() {
 
     pwm.begin();
     pwm.setPWMFreq(60);
-
-    pwm.setPWM(servonum, 0, (SERVOMAX-SERVOMIN)/2 + SERVOMIN);
-
-    //---Uncomment this to set tunning by serial port
-    /*
-    Serial.print("Inser tunning values Kp,Ki,Kd,");
-    boolean done = false;
-    while(!done){
-      if (Serial.available()){
-        Kp = Serial.readStringUntil(',').toFloat();
-        Serial.read();
-        Ki = Serial.readStringUntil(',').toFloat();
-        Serial.read();
-        Kd = Serial.readStringUntil(',').toFloat();
-        Serial.read();
-        done = true;
-      }
-    }
-    
-    Serial.print("Kp");
-    Serial.print(Kp);
-    Serial.print("Ki");
-    Serial.print(Ki);
-    Serial.print("Kd");
-    Serial.println(Kd);
-    //Serial.print("Send any character");
-    //while(!Serial.available()){}
-    myPID.SetTunings(Kp,Ki,Kd);
-    //---------------------------------------*/
+    //pwm.setPWM(servonum, 0, (SERVOMAX-SERVOMIN)/2 + SERVOMIN);
+    //Move all servos to home
+    initialize();
     
     myPID.SetMode(AUTOMATIC);
-    //myPID.SetOutputLimits(SERVOMIN, SERVOMAX);
     myPID.SetOutputLimits(-176, 176);
     myPID.SetControllerDirection(REVERSE);
-    myPID.SetSampleTime(30);//30//200 by default
+    myPID.SetSampleTime(30);
 
     Setpoint = 0;
     previousMillis = millis();
@@ -200,21 +161,13 @@ void loop() {
 
     // wait for MPU interrupt or extra packet(s) available
     while (!mpuInterrupt && fifoCount < packetSize) {
-        // other program behavior stuff here
-        
-        //Serial.print("X Servo position: ");Serial.println((SERVOMAX-SERVOMIN)/2 + SERVOMIN + ypr[1] * 180/M_PI);
-        //pwm.setPWM(servonum, 0, (SERVOMAX-SERVOMIN)/2 + SERVOMIN + ypr[1] * 180/M_PI);
-        
+
         //doneStabilizing
         if(doneStabilizing){
-          //Input = (ypr[2] * 180/M_PI) * -1;
           Input = (ypr[2] * 180/M_PI);
-          //Serial.print("Input: ");Serial.print(Input);
           myPID.Compute();
-          //Serial.print(" PID Output: ");Serial.println(Output);
-          Serial.print(Input);Serial.print(",");Serial.println(Output);
-          //pwm.setPWM(servonum, 0, Output);
-          setServoPosition(Output);
+          setServoPosition(hipFB_R, Output);
+          setServoPosition(hipFB_L, Output);
         }else{
           if(millis() - previousMillis > stabilizationWaitMillis){
             doneStabilizing = true;
@@ -253,12 +206,6 @@ void loop() {
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            //Serial.print("ypr\t");
-            /*Serial.print(ypr[0] * 180/M_PI);
-            Serial.print(" ");
-            Serial.print(ypr[1] * 180/M_PI);
-            Serial.print(" ");
-            Serial.println(ypr[2] * 180/M_PI);*/ 
         #endif
 
         // blink LED to indicate activity
@@ -267,11 +214,19 @@ void loop() {
     }
 }
 
-void setServoPosition(double servoPosition){
+void setServoPosition(uint8_t servoNumber, double servoPosition){
   int duty;
-  //duty = map(servoPosition, 0, 352, SERVOMIN, SERVOMAX);
   duty = map(servoPosition, -176, 176, SERVOMIN, SERVOMAX);
-  pwm.setPWM(servonum, 0, duty);
+  pwm.setPWM(servoNumber, 0, duty);
+}
+
+void initialize() {
+  int i;
+  for (i = 0; i < SERVOS_ARRAY_SIZE ;i++) {
+    targetPositions[i] = homePositions[i];
+    currentPosition[i] = homePositions[i];
+    setServoPosition(i, homePositions[i]);//Moving servos to home
+  }
 }
 
 
