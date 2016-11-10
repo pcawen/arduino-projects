@@ -141,7 +141,9 @@ void setup() {
     pwm.setPWMFreq(60);
     //pwm.setPWM(servonum, 0, (SERVOMAX-SERVOMIN)/2 + SERVOMIN);
     //Move all servos to home
-    initialize();
+    Serial.println(F("Seting robot to home state"));
+    //initialize();
+    Serial.println(F("End seting robot to home state"));
     
     myPID.SetMode(AUTOMATIC);
     myPID.SetOutputLimits(-176, 176);
@@ -164,9 +166,11 @@ void loop() {
 
         //doneStabilizing
         if(doneStabilizing){
-          Input = (ypr[2] * 180/M_PI);
+          Input = (ypr[1] * 180/M_PI);
           myPID.Compute();
-          setServoPosition(hipFB_R, Output);
+          Serial.print(Input);Serial.print(",");Serial.println(Output);
+          //Substract 15 to one servo because the legs have diference in home position
+          setServoPosition(hipFB_R, (Output - 15)*-1);
           setServoPosition(hipFB_L, Output);
         }else{
           if(millis() - previousMillis > stabilizationWaitMillis){
@@ -215,6 +219,7 @@ void loop() {
 }
 
 void setServoPosition(uint8_t servoNumber, double servoPosition){
+  Serial.print("Seting servo ");Serial.print(servoNumber);Serial.print(" To pos ");Serial.println(servoPosition);
   int duty;
   duty = map(servoPosition, -176, 176, SERVOMIN, SERVOMAX);
   pwm.setPWM(servoNumber, 0, duty);
@@ -223,8 +228,8 @@ void setServoPosition(uint8_t servoNumber, double servoPosition){
 void initialize() {
   int i;
   for (i = 0; i < SERVOS_ARRAY_SIZE ;i++) {
-    targetPositions[i] = homePositions[i];
-    currentPosition[i] = homePositions[i];
+    //targetPositions[i] = homePositions[i];
+    //currentPosition[i] = homePositions[i];
     setServoPosition(i, homePositions[i]);//Moving servos to home
   }
 }
