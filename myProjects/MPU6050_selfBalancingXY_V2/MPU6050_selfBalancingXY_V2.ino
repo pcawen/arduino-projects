@@ -17,9 +17,9 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVOS_ARRAY_SIZE 16
 //Home positions                        |-Left(Black) leg| x  |-Right(White) leg|  x RA LA  x  x
 //Home positions                         0  1    2   3   4  5   6   7    8  9  10 11 12 13 14 15
-int homePositions[SERVOS_ARRAY_SIZE] = {-8, 0, -90, 15, 15, 0, -5, 15, 176, 0, 55, 0, 0, 0, 0, 0};
-int targetPositions[SERVOS_ARRAY_SIZE];
-long currentPosition[SERVOS_ARRAY_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ,0, 0};
+//int homePositions[SERVOS_ARRAY_SIZE] = {-8, 0, -90, 15, 15, 0, -5, 15, 176, 0, 55, 0, 0, 0, 0, 0};
+//int targetPositions[SERVOS_ARRAY_SIZE];
+//long currentPosition[SERVOS_ARRAY_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ,0, 0};
 
 //Servo legs identifiers
 uint8_t hipFB_R = 9; //Hip front back
@@ -49,7 +49,6 @@ PID lrPID(&InputLR, &OutputLR, &SetpointLR,Kp,Ki,Kd, DIRECT);
 // AD0 high = 0x69
 MPU6050 mpu;
 
-#define OUTPUT_READABLE_YAWPITCHROLL
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
@@ -100,7 +99,7 @@ void setup() {
     Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
     // load and configure the DMP
-    //Serial.println(F("Initializing DMP..."));
+    Serial.println(F("Initializing DMP..."));
     devStatus = mpu.dmpInitialize();
 
     // supply your own gyro offsets here, scaled for min sensitivity
@@ -141,11 +140,11 @@ void setup() {
 
     pwm.begin();
     pwm.setPWMFreq(60);
-    //pwm.setPWM(servonum, 0, (SERVOMAX-SERVOMIN)/2 + SERVOMIN);
+
     //Move all servos to home
-    Serial.println(F("Seting robot to home state"));
+    //Serial.println(F("Seting robot to home state"));
     //initialize();
-    Serial.println(F("End seting robot to home state"));
+    //Serial.println(F("End seting robot to home state"));
     
     bfPID.SetMode(AUTOMATIC);
     bfPID.SetOutputLimits(-176, 176);
@@ -176,8 +175,7 @@ void loop() {
         if(doneStabilizing){
           InputBF = (ypr[1] * 180/M_PI);
           bfPID.Compute();
-          //Serial.print(InputBF);Serial.print(",");Serial.println(OutputBF);
-          Serial.print(InputLR);Serial.print(",");Serial.println(OutputLR);
+          //Serial.print(InputBF);Serial.print(F(","));Serial.println(OutputBF);
           //Substract 15 to one servo because the legs have diference in home position
           setServoPosition(hipFB_L, (OutputBF - 15)*-1);
           setServoPosition(hipFB_R, OutputBF);
@@ -186,6 +184,7 @@ void loop() {
           //A dead spot to avoid cotinius equilibration movent
           //if(abs(InputLR) >= 2) {
             lrPID.Compute();
+            Serial.print(InputLR);Serial.print(F(","));Serial.println(OutputLR);
             //Constraint the output to avoid servos going out of limits
             double constraintOutput, tempOutputLR;
             tempOutputLR = (OutputLR-55)*-1;
@@ -232,12 +231,10 @@ void loop() {
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
-        #ifdef OUTPUT_READABLE_YAWPITCHROLL
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-        #endif
+        // display Euler angles in degrees
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
         // blink LED to indicate activity
         blinkState = !blinkState;
@@ -246,19 +243,16 @@ void loop() {
 }
 
 void setServoPosition(uint8_t servoNumber, double servoPosition){
-  Serial.print("Seting servo ");Serial.print(servoNumber);Serial.print(" To pos ");Serial.println(servoPosition);
-  int duty;
-  duty = map(servoPosition, -176, 176, SERVOMIN, SERVOMAX);
+  Serial.print(F("Seting servo "));Serial.print(servoNumber);Serial.print(F(" To pos "));Serial.println(servoPosition);
+  int duty = map(servoPosition, -176, 176, SERVOMIN, SERVOMAX);
   pwm.setPWM(servoNumber, 0, duty);
 }
 
-void initialize() {
+/*void initialize() {
   int i;
   for (i = 0; i < SERVOS_ARRAY_SIZE ;i++) {
-    //targetPositions[i] = homePositions[i];
-    //currentPosition[i] = homePositions[i];
     setServoPosition(i, homePositions[i]);//Moving servos to home
   }
-}
+}*/
 
 
