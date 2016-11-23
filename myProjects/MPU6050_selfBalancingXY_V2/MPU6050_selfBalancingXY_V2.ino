@@ -44,7 +44,7 @@ boolean doneStabilizing = false;
 unsigned long previousMillisStep = 0;
 int millisBetweenStep = 1500;
 unsigned long previousMillisSpeed = 0;
-//uint8_t servoSpeed = 0;
+uint8_t servoSpeed = 1;
 int currentPos1 = EXTENPOS1,
     currentPos2 = EXTENPOS2,
     currentPos7 = EXTENPOS7,
@@ -54,12 +54,14 @@ int currentPos1 = EXTENPOS1,
     finalPos7 = CONTRPOS7,
     finalPos8 = CONTRPOS8;
 boolean isLeftStep = false,
+        isContractingLeft = true,
+        isContractingRight = true,
         isLeftMoveDone = false,
         isRightMoveDone = false,
-        isLeftContracted = false,
+        //isLeftContracted = false,
         isMov1Done = false,
         isMov2Done = false,
-        isRightContracted = false,
+        //isRightContracted = false,
         isMov7Done = false,
         isMov8Done = false;
 
@@ -248,7 +250,8 @@ void loop() {
             //Serial.print(F("Contractting left leg? "));
             //Serial.println(isLeftStep);
           }
-          if(isLeftStep && !isLeftMoveDone){
+          //==== Left leg ====
+          if(isLeftStep && !isLeftMoveDone) {
             //Contract and extend left leg
             /*Serial.print(currentPos1);
             Serial.print(",");
@@ -256,83 +259,98 @@ void loop() {
             Serial.print(",");
             Serial.print(currentPos2);
             Serial.println(finalPos2);*/
-            //Contract or expand leg
-            if(currentPos1 != finalPos1){
-              if(currentPos1 < finalPos1){
-                currentPos1++;
+            if(isContractingLeft) {
+              if(currentPos1 > finalPos1) {
+                currentPos1 = currentPos1 - servoSpeed;
+                duty = map(currentPos1, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(1, 0, duty);
               } else {
-                currentPos1--;
+                isMov1Done = true;
               }
-              duty = map(currentPos1, -176, 176, SERVOMIN, SERVOMAX);
-              pwm.setPWM(1, 0, duty);
-            } else {
-              isMov1Done = true;
-            }
-            if(currentPos2 != finalPos2){
               if(currentPos2 < finalPos2){
-                currentPos2++;
+                currentPos2 = currentPos2 + servoSpeed;
+                duty = map(currentPos2, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(2, 0, duty);
               } else {
-                currentPos2--;
+                isMov2Done = true;
               }
-              duty = map(currentPos2, -176, 176, SERVOMIN, SERVOMAX);
-              pwm.setPWM(2, 0, duty);
-            } else {
-              isMov2Done = true;
-            }
-            if(isMov1Done && isMov2Done){
-              isLeftContracted = !isLeftContracted;
-              isMov1Done = false;
-              isMov2Done = false;
-              if(isLeftContracted){
-                //Serial.println(F("Left leg contracted"));
+              if(isMov1Done && isMov2Done){
+                isContractingLeft = false;
+                isMov1Done = false;
+                isMov2Done = false;
                 finalPos1 = EXTENPOS1;
                 finalPos2 = EXTENPOS2;
+              }
+            } else {
+              if(currentPos1 < finalPos1) {
+                currentPos1 = currentPos1 + servoSpeed;
+                duty = map(currentPos1, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(1, 0, duty);
               } else {
-                //Serial.println(F("Left leg extended"));
-                //End of leg cicle
+                isMov1Done = true;
+              }
+              if(currentPos2 > finalPos2){
+                currentPos2 = currentPos2 - servoSpeed;
+                duty = map(currentPos2, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(2, 0, duty);
+              } else {
+                isMov2Done = true;
+              }
+              if(isMov1Done && isMov2Done){
+                isContractingLeft = true;
                 isLeftMoveDone = true;
+                isMov1Done = false;
+                isMov2Done = false;
                 finalPos1 = CONTRPOS1;
                 finalPos2 = CONTRPOS2;
               }
             }
           }
-          if (!isLeftStep && !isRightMoveDone){
-            //Contract and extendn right leg
-            //Contract or expand leg
-            if(currentPos7 != finalPos7){
-              if(currentPos7 < finalPos7){
-                currentPos7++;
+          //==== Right leg =====
+          */
+          if (!isLeftStep && !isRightMoveDone) {
+            if(isContractingRight) {
+              if(currentPos7 < finalPos7) {
+                currentPos7 = currentPos7 + servoSpeed;
+                duty = map(currentPos7, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(7, 0, duty);
               } else {
-                currentPos7--;
+                isMov7Done = true;
               }
-              duty = map(currentPos7, -176, 176, SERVOMIN, SERVOMAX);
-              pwm.setPWM(7, 0, duty);
-            } else {
-              isMov7Done = true;
-            }
-            if(currentPos8 != finalPos8){
-              if(currentPos8 < finalPos8){
-                currentPos8++;
+              if(currentPos8 > finalPos8){
+                currentPos8 = currentPos8 - servoSpeed;
+                duty = map(currentPos8, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(8, 0, duty);
               } else {
-                currentPos8--;
+                isMov8Done = true;
               }
-              duty = map(currentPos8, -176, 176, SERVOMIN, SERVOMAX);
-              pwm.setPWM(8, 0, duty);
-            } else {
-              isMov8Done = true;
-            }
-            if(isMov7Done && isMov8Done){
-              isRightContracted = !isRightContracted;
-              isMov7Done = false;
-              isMov8Done = false;
-              if(isRightContracted){
-                //Serial.println(F("Right leg contracted"));
+              if(isMov7Done && isMov8Done){
+                isContractingRight = false;
+                isMov7Done = false;
+                isMov8Done = false;
                 finalPos7 = EXTENPOS7;
                 finalPos8 = EXTENPOS8;
+              }
+            } else {
+              if(currentPos7 > finalPos7) {
+                currentPos7 = currentPos7 - servoSpeed;
+                duty = map(currentPos7, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(7, 0, duty);
               } else {
-                //Serial.println(F("Right leg extended"));
-                //End of leg cicle
+                isMov7Done = true;
+              }
+              if(currentPos8 < finalPos8){
+                currentPos8 = currentPos8 + servoSpeed;
+                duty = map(currentPos8, -176, 176, SERVOMIN, SERVOMAX);
+                pwm.setPWM(8, 0, duty);
+              } else {
+                isMov8Done = true;
+              }
+              if(isMov7Done && isMov8Done){
+                isContractingRight = true;
                 isRightMoveDone = true;
+                isMov7Done = false;
+                isMov8Done = false;
                 finalPos7 = CONTRPOS7;
                 finalPos8 = CONTRPOS8;
               }
