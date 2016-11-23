@@ -22,16 +22,46 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 //long currentPosition[SERVOS_ARRAY_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ,0, 0};
 
 //Servo legs identifiers
-uint8_t hipFB_R = 9; //Hip front back
-uint8_t hipFB_L = 3;
-uint8_t hipLR_R = 10; //Hip left right
-uint8_t hipLR_L = 4;
-uint8_t ankleLR_R = 6;
-uint8_t ankleLR_L = 0;
+#define hipFB_R 9 //Hip front back
+#define hipFB_L 3
+#define hipLR_R 10 //Hip left right
+#define hipLR_L 4
+#define ankleLR_R 6
+#define ankleLR_L 0
 
-unsigned long previousMillis = 0;
-unsigned long stabilizationWaitMillis = 5000;
-boolean doneStabilizing = false;  
+#define CONTRPOS1 -70//Leg up --
+#define CONTRPOS2 -20//++
+#define CONTRPOS7 85//++
+#define CONTRPOS8 106//--
+#define EXTENPOS1 0
+#define EXTENPOS2 -90
+#define EXTENPOS7 15
+#define EXTENPOS8 176
+
+unsigned long prevStabMillis = 0;
+int stabilizationWaitMillis = 5000;
+boolean doneStabilizing = false;
+unsigned long previousMillisStep = 0;
+int millisBetweenStep = 1500;
+unsigned long previousMillisSpeed = 0;
+//uint8_t servoSpeed = 0;
+int currentPos1 = EXTENPOS1,
+    currentPos2 = EXTENPOS2,
+    currentPos7 = EXTENPOS7,
+    currentPos8 = EXTENPOS8,
+    finalPos1 = CONTRPOS1,
+    finalPos2 = CONTRPOS2,
+    finalPos7 = CONTRPOS7,
+    finalPos8 = CONTRPOS8;
+boolean isLeftStep = false,
+        isLeftMoveDone = false,
+        isRightMoveDone = false,
+        isLeftContracted = false,
+        isMov1Done = false,
+        isMov2Done = false,
+        isRightContracted = false,
+        isMov7Done = false,
+        isMov8Done = false;
 
 float Kp = 0.5;
 float Ki = 30;
@@ -65,6 +95,7 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+int duty = 0;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -158,7 +189,7 @@ void setup() {
 
     SetpointBF = 0;
     SetpointLR = 0;
-    previousMillis = millis();
+    prevStabMillis = millis();
 }
 
 // ================================================================
@@ -182,24 +213,133 @@ void loop() {
 
           InputLR = (ypr[2] * 180/M_PI);
           //A dead spot to avoid cotinius equilibration movent
-          //if(abs(InputLR) >= 2) {
+          if(abs(InputLR) >= 2) {
             lrPID.Compute();
-            Serial.print(InputLR);Serial.print(F(","));Serial.println(OutputLR);
+            //Serial.print(InputLR);Serial.print(F(","));Serial.println(OutputLR);
             //Constraint the output to avoid servos going out of limits
             double constraintOutput, tempOutputLR;
             tempOutputLR = (OutputLR-55)*-1;
             constraintOutput = constrain(tempOutputLR, -150, 90);
-            setServoPosition(hipLR_R, constraintOutput);
+            duty = map(constraintOutput, -176, 176, SERVOMIN, SERVOMAX);
+            pwm.setPWM(hipLR_R, 0, duty);
+            //setServoPosition(hipLR_R, constraintOutput);
             tempOutputLR = (OutputLR-15)*-1;
             constraintOutput = constrain(tempOutputLR, -10, 150);
-            setServoPosition(hipLR_L, constraintOutput);
-            constraintOutput = constrain(OutputLR, -50, 40);
-            setServoPosition(ankleLR_R, constraintOutput*-1);
-            constraintOutput = constrain(OutputLR, -30, 30);
-            setServoPosition(ankleLR_L, constraintOutput*-1);
-          //}
+            duty = map(constraintOutput, -176, 176, SERVOMIN, SERVOMAX);
+            pwm.setPWM(hipLR_L, 0, duty);
+            //setServoPosition(hipLR_L, constraintOutput);
+            constraintOutput = constrain(OutputLR, -40, 40);
+            duty = map(constraintOutput*-1, -176, 176, SERVOMIN, SERVOMAX);
+            pwm.setPWM(ankleLR_R, 0, duty);
+            //setServoPosition(ankleLR_R, constraintOutput*-1);
+            constraintOutput = constrain(OutputLR, -40, 30);
+            duty = map(constraintOutput*-1, -176, 176, SERVOMIN, SERVOMAX);
+            pwm.setPWM(ankleLR_L, 0, duty);
+            //setServoPosition(ankleLR_L, constraintOutput*-1);
+          }
+
+          //=====In place steps=====
+          //Steps ankleL 1, KneeL 2, ankleR 7, KneeR 8
+          if(millis() - previousMillisStep > millisBetweenStep){ 
+            previousMillisStep = millis();
+            isLeftStep = !isLeftStep;
+            isLeftMoveDone = false;
+            isRightMoveDone = false;
+            //Serial.print(F("Contractting left leg? "));
+            //Serial.println(isLeftStep);
+          }
+          if(isLeftStep && !isLeftMoveDone){
+            //Contract and extend left leg
+            /*Serial.print(currentPos1);
+            Serial.print(",");
+            Serial.print(finalPos1);
+            Serial.print(",");
+            Serial.print(currentPos2);
+            Serial.println(finalPos2);*/
+            //Contract or expand leg
+            if(currentPos1 != finalPos1){
+              if(currentPos1 < finalPos1){
+                currentPos1++;
+              } else {
+                currentPos1--;
+              }
+              duty = map(currentPos1, -176, 176, SERVOMIN, SERVOMAX);
+              pwm.setPWM(1, 0, duty);
+            } else {
+              isMov1Done = true;
+            }
+            if(currentPos2 != finalPos2){
+              if(currentPos2 < finalPos2){
+                currentPos2++;
+              } else {
+                currentPos2--;
+              }
+              duty = map(currentPos2, -176, 176, SERVOMIN, SERVOMAX);
+              pwm.setPWM(2, 0, duty);
+            } else {
+              isMov2Done = true;
+            }
+            if(isMov1Done && isMov2Done){
+              isLeftContracted = !isLeftContracted;
+              isMov1Done = false;
+              isMov2Done = false;
+              if(isLeftContracted){
+                //Serial.println(F("Left leg contracted"));
+                finalPos1 = EXTENPOS1;
+                finalPos2 = EXTENPOS2;
+              } else {
+                //Serial.println(F("Left leg extended"));
+                //End of leg cicle
+                isLeftMoveDone = true;
+                finalPos1 = CONTRPOS1;
+                finalPos2 = CONTRPOS2;
+              }
+            }
+          }
+          if (!isLeftStep && !isRightMoveDone){
+            //Contract and extendn right leg
+            //Contract or expand leg
+            if(currentPos7 != finalPos7){
+              if(currentPos7 < finalPos7){
+                currentPos7++;
+              } else {
+                currentPos7--;
+              }
+              duty = map(currentPos7, -176, 176, SERVOMIN, SERVOMAX);
+              pwm.setPWM(7, 0, duty);
+            } else {
+              isMov7Done = true;
+            }
+            if(currentPos8 != finalPos8){
+              if(currentPos8 < finalPos8){
+                currentPos8++;
+              } else {
+                currentPos8--;
+              }
+              duty = map(currentPos8, -176, 176, SERVOMIN, SERVOMAX);
+              pwm.setPWM(8, 0, duty);
+            } else {
+              isMov8Done = true;
+            }
+            if(isMov7Done && isMov8Done){
+              isRightContracted = !isRightContracted;
+              isMov7Done = false;
+              isMov8Done = false;
+              if(isRightContracted){
+                //Serial.println(F("Right leg contracted"));
+                finalPos7 = EXTENPOS7;
+                finalPos8 = EXTENPOS8;
+              } else {
+                //Serial.println(F("Right leg extended"));
+                //End of leg cicle
+                isRightMoveDone = true;
+                finalPos7 = CONTRPOS7;
+                finalPos8 = CONTRPOS8;
+              }
+            }
+          }
         }else{
-          if(millis() - previousMillis > stabilizationWaitMillis){
+          if(millis() - prevStabMillis > stabilizationWaitMillis){
             doneStabilizing = true;
           }
         }
@@ -243,8 +383,8 @@ void loop() {
 }
 
 void setServoPosition(uint8_t servoNumber, double servoPosition){
-  Serial.print(F("Seting servo "));Serial.print(servoNumber);Serial.print(F(" To pos "));Serial.println(servoPosition);
-  int duty = map(servoPosition, -176, 176, SERVOMIN, SERVOMAX);
+  //Serial.print(F("Seting servo "));Serial.print(servoNumber);Serial.print(F(" To pos "));Serial.println(servoPosition);
+  duty = map(servoPosition, -176, 176, SERVOMIN, SERVOMAX);
   pwm.setPWM(servoNumber, 0, duty);
 }
 
