@@ -42,11 +42,11 @@ unsigned long prevStabMillis = 0;
 int stabilizationWaitMillis = 5000;
 boolean doneStabilizing = false;
 unsigned long previousMillisStep = 0;
-int millisBetweenStep = 1500;
+int millisBetweenStep = 400;
 unsigned long previousMillisSpeed = 0;
 unsigned long previousMillisContractedL = 0;
 unsigned long previousMillisContractedR = 0;
-int contractedLegWaitMillis = 500;
+int contractedLegWaitMillis = 300;
 boolean isLeftStep = false,
         isContractingLeft = true,
         isContractingRight = true,
@@ -209,20 +209,24 @@ void loop() {
             //Constraint the output to avoid servos going out of limits
             double constraintOutput, tempOutputLR;
             tempOutputLR = (OutputLR-55)*-1;
-            constraintOutput = constrain(tempOutputLR, -150, 90);
+            //constraintOutput = constrain(tempOutputLR, -150, 90);
+            constraintOutput = constrain(tempOutputLR, 0, 70);
             duty = map(constraintOutput, -176, 176, SERVOMIN, SERVOMAX);
             pwm.setPWM(hipLR_R, 0, duty);
             //setServoPosition(hipLR_R, constraintOutput);
             tempOutputLR = (OutputLR-15)*-1;
-            constraintOutput = constrain(tempOutputLR, -10, 150);
+            //constraintOutput = constrain(tempOutputLR, -10, 150);
+            constraintOutput = constrain(tempOutputLR, 10, 40);
             duty = map(constraintOutput, -176, 176, SERVOMIN, SERVOMAX);
             pwm.setPWM(hipLR_L, 0, duty);
             //setServoPosition(hipLR_L, constraintOutput);
-            constraintOutput = constrain(OutputLR, -40, 40);
+            //constraintOutput = constrain(OutputLR, -40, 40);
+            constraintOutput = constrain(OutputLR, -20, 20);
             duty = map(constraintOutput*-1, -176, 176, SERVOMIN, SERVOMAX);
             pwm.setPWM(ankleLR_R, 0, duty);
             //setServoPosition(ankleLR_R, constraintOutput*-1);
-            constraintOutput = constrain(OutputLR, -40, 30);
+            //constraintOutput = constrain(OutputLR, -40, 30);
+            constraintOutput = constrain(OutputLR, -20, 10);
             duty = map(constraintOutput*-1, -176, 176, SERVOMIN, SERVOMAX);
             pwm.setPWM(ankleLR_L, 0, duty);
             //setServoPosition(ankleLR_L, constraintOutput*-1);
